@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import nodemailer from "nodemailer"
 
-// Static email configuration
+// Static email configuration with updated credentials
 const EMAIL_HOST = "smtp.gmail.com"
 const EMAIL_PORT = 587
 const EMAIL_SECURE = false
@@ -25,20 +25,25 @@ export async function POST(request: Request) {
         user: EMAIL_USER,
         pass: EMAIL_PASSWORD,
       },
-      // Disable DNS lookup which is causing issues in the serverless environment
-      ignoreTLS: true,
+      // Disable options that may cause issues in serverless environments
+      ignoreTLS: false,
       tls: {
         rejectUnauthorized: false,
       },
     })
 
-    // Convert base64 to buffer
-    const pdfBuffer = Buffer.from(pdfBase64.split(",")[1] || pdfBase64, "base64")
+    // Convert base64 to buffer, handling both formats (with or without data URL prefix)
+    let base64Data = pdfBase64
+    if (base64Data.includes(",")) {
+      base64Data = base64Data.split(",")[1]
+    }
+
+    const pdfBuffer = Buffer.from(base64Data, "base64")
 
     // Send email with PDF attachment
     await transporter.sendMail({
       from: `"Republic of Bean" <${EMAIL_USER}>`,
-      to: "aturan@asu.edu",
+      to: "phanigavara465@gmail.com",
       subject: "Republic of Bean - Simulation Results",
       text: "Please find attached the simulation results from a Republic of Bean participant.",
       html: "<p>Please find attached the simulation results from a Republic of Bean participant.</p>",
@@ -50,6 +55,7 @@ export async function POST(request: Request) {
       ],
     })
 
+    console.log("Email sent successfully")
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Error sending email:", error)

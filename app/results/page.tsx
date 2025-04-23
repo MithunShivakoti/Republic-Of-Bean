@@ -15,6 +15,13 @@ export default function ResultsPage() {
   const { discussionState, getFinalSelection } = useAgentContext()
   const [isLoading, setIsLoading] = useState(true)
   const [shareUrl, setShareUrl] = useState("")
+  const [firstRoundResults, setFirstRoundResults] = useState<{
+    policies: any
+    totalWeight: number
+    optionCounts: { 1: number; 2: number; 3: number }
+    selectedOptions: any[]
+    timestamp: string
+  } | null>(null)
 
   // Create confetti elements
   useEffect(() => {
@@ -66,6 +73,62 @@ export default function ResultsPage() {
       setShareUrl(url)
     }
   }, [policies, router, areAllSelectionsIdentical])
+
+  // Save first round results
+  useEffect(() => {
+    if (!isLoading && Object.keys(policies).length === 7) {
+      // Get the selected options for each policy
+      const selectedOptionsData = policyQuestions
+        .map((question) => {
+          const policy = policies[question.id]
+          if (!policy) return null
+
+          const option = question.options.find((opt) => opt.id === policy.id)
+          return {
+            questionId: question.id,
+            question: question.title,
+            optionId: policy.id,
+            optionText: option ? option.text : "",
+            weight: policy.weight,
+          }
+        })
+        .filter(Boolean)
+
+      // Count the distribution of option types
+      const optionCountsData = {
+        1: 0,
+        2: 0,
+        3: 0,
+      }
+
+      Object.values(policies).forEach((policy) => {
+        optionCountsData[policy.id as keyof typeof optionCountsData]++
+      })
+
+      // Save all data in firstRoundResults
+      setFirstRoundResults({
+        policies: { ...policies },
+        totalWeight,
+        optionCounts: optionCountsData,
+        selectedOptions: selectedOptionsData,
+        timestamp: new Date().toISOString(),
+      })
+
+      // Also save to localStorage for persistence
+      localStorage.setItem(
+        "beanFirstRoundResults",
+        JSON.stringify({
+          policies: { ...policies },
+          totalWeight,
+          optionCounts: optionCountsData,
+          selectedOptions: selectedOptionsData,
+          timestamp: new Date().toISOString(),
+        }),
+      )
+
+      console.log("First round results saved:", firstRoundResults)
+    }
+  }, [isLoading, policies, totalWeight])
 
   const handleReset = () => {
     resetPolicies()
@@ -280,6 +343,17 @@ export default function ResultsPage() {
           <Button onClick={handleContinueToDiscussion} className="px-8 py-6 text-lg gap-2 neon-button">
             <Users className="h-5 w-5" />
             Continue to Parliamentary Discussion
+          </Button>
+        </div>
+
+        {/* Debug button to view first round results */}
+        <div className="mt-8 text-center">
+          <Button
+            onClick={() => console.log("First Round Results:", firstRoundResults)}
+            variant="outline"
+            className="text-xs border-primary/30 text-primary/70"
+          >
+            Debug: View First Round Results
           </Button>
         </div>
       </div>

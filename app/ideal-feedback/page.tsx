@@ -83,22 +83,24 @@ export default function IdealFeedbackPage() {
           <CardTitle className="text-2xl">{educationIdealContent.title}</CardTitle>
           <CardDescription className="text-lg">{educationIdealContent.description}</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="bg-white text-black">
           <div className="prose max-w-none">
             <table className="w-full border-collapse">
               <thead>
                 <tr className="bg-primary/20">
-                  <th className="border border-primary/30 p-2 text-left">Policy Factor</th>
-                  <th className="border border-primary/30 p-2 text-left">Selected Option</th>
-                  <th className="border border-primary/30 p-2 text-left">Reasoning & Real-Life Examples</th>
+                  <th className="border border-primary/30 p-2 text-left font-bold text-black">Policy Factor</th>
+                  <th className="border border-primary/30 p-2 text-left font-bold text-black">Selected Option</th>
+                  <th className="border border-primary/30 p-2 text-left font-bold text-black">
+                    Reasoning & Real-Life Examples
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {educationIdealContent.content.map((item, index) => (
-                  <tr key={index} className={index % 2 === 0 ? "bg-primary/10" : ""}>
-                    <td className="border border-primary/30 p-2 font-medium">{item.factor}</td>
-                    <td className="border border-primary/30 p-2">{item.option}</td>
-                    <td className="border border-primary/30 p-2 whitespace-pre-line">{item.reasoning}</td>
+                  <tr key={index} className={index % 2 === 0 ? "bg-gray-100" : "bg-white"}>
+                    <td className="border border-primary/30 p-2 font-medium text-black">{item.factor}</td>
+                    <td className="border border-primary/30 p-2 text-black">{item.option}</td>
+                    <td className="border border-primary/30 p-2 whitespace-pre-line text-black">{item.reasoning}</td>
                   </tr>
                 ))}
               </tbody>

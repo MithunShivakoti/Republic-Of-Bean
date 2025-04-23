@@ -3,13 +3,21 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { Card, CardHeader } from "@/components/ui/card"
 import { usePolicyContext } from "@/providers/policy-provider"
 import { useAgentContext } from "@/providers/agent-provider"
 import { policyQuestions } from "@/data/policy-questions"
 import { idealAnswers } from "@/data/ideal-answers"
 import { ArrowRight } from "lucide-react"
-import { PolicyIcons } from "@/components/policy-icons"
+
+// Add this function at the top of the component
+function getMajorityVoteResults() {
+  if (typeof window !== "undefined") {
+    const results = localStorage.getItem("beanMajorityOptions")
+    return results ? JSON.parse(results) : {}
+  }
+  return {}
+}
 
 export default function SummaryResultsPage() {
   const router = useRouter()
@@ -165,6 +173,9 @@ export default function SummaryResultsPage() {
     )
   }
 
+  // Add this before the return statement in the component
+  const majorityVoteResults = getMajorityVoteResults()
+
   return (
     <div className="bright-background min-h-screen py-12 px-4">
       <div className="floating-shapes">
@@ -187,59 +198,37 @@ export default function SummaryResultsPage() {
             <CardHeader className="bg-gradient-to-r from-primary/20 to-secondary/20 p-4 border-b border-primary/30">
               <h2 className="text-xl font-bold neon-text">Final Parliamentary Decisions</h2>
             </CardHeader>
-            <CardContent className="p-4 dark-card">
+            {/* In the JSX, add this section to display the majority votes */}
+            {/* Add this after the "Final Parliamentary Decisions" heading */}
+            <div className="mb-8 px-4">
+              <h3 className="text-xl font-bold mb-4 neon-text">Majority Vote Results by Policy</h3>
               <div className="grid gap-4">
-                {policyQuestions.map((question, index) => {
-                  // Get the final selection for this policy from discussionState
-                  const finalSelectionId = discussionState?.finalSelections?.[question.id]
-
-                  // Ensure we have a valid selection ID - if not, default to option 1
-                  const effectiveSelectionId = finalSelectionId || 1
-
-                  // Get the selected option details
-                  const selectedOption = question.options.find((opt) => opt.id === effectiveSelectionId)
-
-                  return (
-                    <div
-                      key={question.id}
-                      className="p-3 border border-primary/30 rounded-lg bg-gradient-to-r from-primary/10 to-secondary/10"
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <PolicyIcons policyId={question.id} className="h-5 w-5 text-primary" />
-                        <h3 className="font-bold neon-text">{question.title}</h3>
-                      </div>
-                      {selectedOption ? (
-                        <div>
-                          <div className="flex justify-between items-center">
-                            <div className="flex-1">
-                              <p className="text-white font-medium">
-                                <span className="text-primary">Final Decision:</span> Option {selectedOption.id}
-                              </p>
-                              <p className="text-gray-100 mt-1">{selectedOption.text}</p>
-                            </div>
-                            <div
-                              className={`px-3 py-1.5 ml-3 rounded-full text-sm font-medium bg-primary/30 text-white border border-primary/50`}
-                            >
-                              {selectedOption.weight} unit{selectedOption.weight !== 1 ? "s" : ""}
-                            </div>
-                          </div>
-
-                          <div className="mt-2 pt-2 border-t border-primary/20">
-                            <p className="text-sm text-white">
-                              This was the majority decision from the parliamentary vote.
-                            </p>
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="text-white bg-red-500/20 p-2 rounded border border-red-500/30">
-                          Error: Option data not found. Please contact support.
+                {Object.keys(majorityVoteResults).length > 0 ? (
+                  Object.entries(majorityVoteResults).map(([policyId, data]) => {
+                    const policyData = data as any
+                    const policyQuestion = policyQuestions.find((q) => q.id === Number.parseInt(policyId))
+                    return (
+                      <div
+                        key={policyId}
+                        className="p-4 rounded-lg bg-gradient-to-r from-primary/10 to-secondary/10 border border-primary/30"
+                      >
+                        <p className="font-semibold neon-text">
+                          Policy {policyId}: {policyQuestion?.title}
                         </p>
-                      )}
-                    </div>
-                  )
-                })}
+                        <p className="text-white">
+                          Majority Vote: Option {policyData.optionId} ({policyData.votes} votes)
+                        </p>
+                        <p className="text-gray-300 text-sm mt-1">{policyData.optionText}</p>
+                      </div>
+                    )
+                  })
+                ) : (
+                  <p className="text-white">
+                    The voting data is available but not displaying correctly. Please refresh the page.
+                  </p>
+                )}
               </div>
-            </CardContent>
+            </div>
           </Card>
 
           {/* Navigation Button */}

@@ -60,8 +60,8 @@
     "zod": "^3.24.1",
     "jspdf": "latest",
     "html2canvas": "latest",
-    "jspdf-autotable": "latest",
-    "nodemailer": "latest"
+    "nodemailer": "latest",
+    "jspdf-autotable": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",

@@ -6,7 +6,8 @@ export const policyDetails = [
       {
         id: 1,
         title: "Limit access to education for refugees",
-        description: "Allow only a small percentage to enroll in mainstream schools.",
+        description:
+          "Limit access to education for refugees, allowing only a small percentage to enroll in mainstream schools.",
         advantage: "Prioritizing resources on citizens potentially eases the pressure on educational infrastructure.",
         disadvantage:
           "Excludes a significant portion of refugee children from accessing quality education, hindering their future prospects.",
@@ -14,7 +15,8 @@ export const policyDetails = [
       {
         id: 2,
         title: "Establish separate schools or learning centers",
-        description: "Create dedicated facilities specifically for refugee education, ensuring access to education.",
+        description:
+          "Establish separate schools or learning centers specifically for refugee education, ensuring access to education.",
         advantage: "Provides dedicated education for refugees, considering their unique needs and challenges.",
         disadvantage:
           "This may foster segregation and limit interaction and integration opportunities between refugees and citizens.",
@@ -22,7 +24,8 @@ export const policyDetails = [
       {
         id: 3,
         title: "Provide equal access to education for all",
-        description: "Integrate refugee students into mainstream schools.",
+        description:
+          "Provide equal access to education for all, and integrate refugee students into mainstream schools.",
         advantage: "Promotes integration, cultural exchange, and social cohesion among refugees and citizens.",
         disadvantage:
           "Requires additional resources, teacher training, and support systems to accommodate diverse student populations.",
@@ -36,7 +39,8 @@ export const policyDetails = [
       {
         id: 1,
         title: "Maintain current language policy",
-        description: "Teach only Teanish in schools, excluding other languages, including those spoken by refugees.",
+        description:
+          "Maintain the current policy of teaching only Teanish in schools, excluding other languages, including those spoken by refugees.",
         advantage: "Preserves linguistic unity and simplifies administrative processes.",
         disadvantage:
           "Hinders effective communication and integration of refugee students, potentially leading to educational disparities.",
@@ -44,7 +48,8 @@ export const policyDetails = [
       {
         id: 2,
         title: "Provide primary Teanish language courses",
-        description: "Focus on basic language skills to enable refugees to access essential services.",
+        description:
+          "Provide primary Teanish language courses to refugees, enabling them to access essential services.",
         advantage: "Offers a minimum level of language proficiency for basic communication needs.",
         disadvantage:
           "Limits educational opportunities and restricts academic progress due to inadequate language skills.",
@@ -52,7 +57,8 @@ export const policyDetails = [
       {
         id: 3,
         title: "Implement comprehensive bilingual education",
-        description: "Offer education in both Teanish and the mother tongue of refugees.",
+        description:
+          "Implement comprehensive bilingual education programs, offering education in both Teanish and the mother tongue of refugees.",
         advantage:
           "Facilitates better communication, inclusivity, integration, and preservation of cultural identities.",
         disadvantage:
@@ -75,7 +81,8 @@ export const policyDetails = [
       {
         id: 2,
         title: "Basic training sessions",
-        description: "Offer basic training to familiarize teachers with the challenges and needs of refugee students.",
+        description:
+          "Offer basic training sessions for teachers to familiarize them with the challenges and needs of refugee students.",
         advantage:
           "Provides teachers with a foundational understanding of refugee education and some strategies to support students.",
         disadvantage:
@@ -85,7 +92,7 @@ export const policyDetails = [
         id: 3,
         title: "Comprehensive training programs",
         description:
-          "Implement ongoing training equipping teachers with skills to effectively support refugee students.",
+          "Implement comprehensive and ongoing training programs for teachers, equipping them with the necessary skills to effectively support and educate refugee students.",
         advantage:
           "Enhances teachers' capacity to address the diverse needs of refugee students and promote their educational success.",
         disadvantage:
@@ -100,7 +107,7 @@ export const policyDetails = [
       {
         id: 1,
         title: "Maintain existing curriculum",
-        description: "Keep the national curriculum without modifications.",
+        description: "Maintain the existing national curriculum without modifications.",
         advantage: "Maintains continuity and preserves the integrity of the existing curriculum.",
         disadvantage:
           "Neglects the inclusion of refugee experiences, histories, and cultural diversity, potentially hindering cultural understanding and integration.",
@@ -108,7 +115,8 @@ export const policyDetails = [
       {
         id: 2,
         title: "Introduce supplementary materials",
-        description: "Add resources that acknowledge refugee experiences while following the mainstream curriculum.",
+        description:
+          "Introduce supplementary materials and resources that acknowledge the experiences and contributions of refugees while still following the mainstream curriculum.",
         advantage:
           "Provides some recognition of refugee experiences within the existing curriculum, fostering empathy and awareness among students.",
         disadvantage:
@@ -118,7 +126,7 @@ export const policyDetails = [
         id: 3,
         title: "Adapt the national curriculum",
         description:
-          "Include diverse perspectives, histories, and cultural elements relevant to both citizens and refugees.",
+          "Adapt the national curriculum to include diverse perspectives, histories, and cultural elements relevant to both citizens.",
         advantage:
           "Promotes cultural exchange, mutual understanding, and respect among students from diverse backgrounds.",
         disadvantage:
@@ -142,7 +150,8 @@ export const policyDetails = [
       {
         id: 2,
         title: "Basic support services",
-        description: "Establish counseling and peer support programs to address psychosocial needs.",
+        description:
+          "Establish basic support services such as counseling and peer support programs to address the psychosocial needs of refugee students.",
         advantage:
           "Provides some level of support and assistance to address the unique psychosocial challenges faced by refugee students.",
         disadvantage:
@@ -151,7 +160,8 @@ export const policyDetails = [
       {
         id: 3,
         title: "Comprehensive psychosocial programs",
-        description: "Develop specialized support offering tailored assistance to refugee students and families.",
+        description:
+          "Develop comprehensive and specialized psychosocial support programs, offering tailored assistance to refugee students and their families.",
         advantage:
           "Prioritizes the mental health and well-being of refugee students, facilitating their successful integration and academic progress.",
         disadvantage:
@@ -173,7 +183,8 @@ export const policyDetails = [
       {
         id: 2,
         title: "Increased financial support",
-        description: "Provide more funding, although still insufficient to meet all needs and challenges.",
+        description:
+          "Increase financial support for refugee education, although the funding may still be insufficient to meet all the needs and challenges.",
         advantage:
           "Provides additional resources and support to enhance the educational opportunities and outcomes for refugee students.",
         disadvantage:
@@ -182,7 +193,8 @@ export const policyDetails = [
       {
         id: 3,
         title: "Significant financial resources",
-        description: "Ensure adequate funding for comprehensive support and inclusion of refugee education.",
+        description:
+          "Allocate significant financial resources to ensure adequate funding for refugee education, allowing for comprehensive support and inclusion.",
         advantage:
           "Enables the provision of high-quality education, resources, and support services for refugee students, maximizing their potential for success.",
         disadvantage:
@@ -197,7 +209,8 @@ export const policyDetails = [
       {
         id: 1,
         title: "Recognize only domestic qualifications",
-        description: "Only recognize educational qualifications obtained within the Republic of Bean.",
+        description:
+          "Only recognize and accredit the educational qualifications and experiences obtained within the Republic of Bean, disregarding previous education obtained in the migrants' countries of origin.",
         advantage:
           "Simplifies the accreditation process and ensures alignment with national standards, promoting consistency in educational qualifications.",
         disadvantage:
@@ -206,7 +219,8 @@ export const policyDetails = [
       {
         id: 2,
         title: "Comprehensive evaluation process",
-        description: "Establish recognition for previous educational experiences using universal standards.",
+        description:
+          "Establish a comprehensive evaluation and recognition process for the certification and accreditation of previous educational experiences obtained by migrants. Use universal standards for certification and accreditation.",
         advantage:
           "Recognizes and values the educational achievements and qualifications obtained by migrants, enhancing their opportunities for further education and employment.",
         disadvantage:
@@ -216,7 +230,7 @@ export const policyDetails = [
         id: 3,
         title: "Tailored recognition programs",
         description:
-          "Combine recognition of previous education with additional training to ensure alignment with standards.",
+          "Develop tailored programs and initiatives that combine recognition of previous education with additional training or assessments to ensure alignment with national standards and requirements.",
         advantage:
           "Provides a pathway for migrants to have their previous education recognized while addressing any gaps through additional training or assessments.",
         disadvantage:

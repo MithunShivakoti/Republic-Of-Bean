@@ -1,8 +1,11 @@
 "use client"
 
+import React from "react"
+
 import { createContext, useContext, useState, useEffect, type ReactNode, useCallback } from "react"
 import allAgentProfiles, { type AgentProfile } from "@/data/all-agent-profiles"
 import { policyQuestions } from "@/data/policy-questions"
+import { getAgentPreferredOption } from "@/lib/openai-service"
 
 type AgentVote = {
   agentId: string
@@ -20,11 +23,13 @@ interface AgentContextType {
   selectedAgent: AgentProfile | null
   discussionState: DiscussionState
   initialAgentVotes: Record<string, Record<number, number>>
+  agentPreferredOptions: Record<string, Record<number, number>>
   setSelectedAgent: (agent: AgentProfile | null) => void
   userVote: (policyId: number, optionId: number) => void
   agentVotes: (policyId: number) => void
   getFinalSelection: (policyId: number) => number | null
   generateInitialAgentVotes: () => void
+  getAgentPreferredOptions: (policyId: number) => Promise<Record<string, number> | undefined>
   hasInitialVotes: boolean
   resetGameState: () => void
 }
@@ -39,11 +44,13 @@ const AgentContext = createContext<AgentContextType>({
   selectedAgent: null,
   discussionState: initialDiscussionState,
   initialAgentVotes: {},
+  agentPreferredOptions: {},
   setSelectedAgent: () => {},
   userVote: () => {},
   agentVotes: () => {},
   getFinalSelection: () => null,
   generateInitialAgentVotes: () => {},
+  getAgentPreferredOptions: () => Promise.resolve(undefined),
   hasInitialVotes: false,
   resetGameState: () => {},
 })
@@ -81,6 +88,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   const [selectedAgent, setSelectedAgent] = useState<AgentProfile | null>(null)
   const [discussionState, setDiscussionState] = useState<DiscussionState>(initialDiscussionState)
   const [initialAgentVotes, setInitialAgentVotes] = useState<Record<string, Record<number, number>>>({})
+  const [agentPreferredOptions, setAgentPreferredOptions] = useState<Record<string, Record<number, number>>>({})
   const [hasInitialVotes, setHasInitialVotes] = useState(false)
 
   useEffect(() => {
@@ -294,6 +302,47 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("beanBudgetUsage", JSON.stringify(budgetUsage))
   }, [agents, initialAgentVotes, hasInitialVotes])
 
+  // Get agent preferred options for a policy
+  const getAgentPreferredOptions = useCallback(
+    async (policyId: number) => {
+      // Skip if we don't have agents loaded yet
+      if (agents.length === 0) {
+        return
+      }
+
+      const newPreferredOptions: Record<string, number> = {}
+
+      // Get preferred option for each agent
+      for (const agent of agents) {
+        try {
+          // If we already have a preferred option for this agent and policy, skip
+          if (agentPreferredOptions[agent.id]?.[policyId]) {
+            continue
+          }
+
+          // Get the preferred option from OpenAI
+          const preferredOption = await getAgentPreferredOption(agent.id, policyId)
+
+          // Store the preferred option
+          setAgentPreferredOptions((prev) => ({
+            ...prev,
+            [agent.id]: {
+              ...(prev[agent.id] || {}),
+              [policyId]: preferredOption,
+            },
+          }))
+
+          newPreferredOptions[agent.id] = preferredOption
+        } catch (error) {
+          console.error(`Error getting preferred option for agent ${agent.id}:`, error)
+        }
+      }
+
+      return newPreferredOptions
+    },
+    [agents, agentPreferredOptions],
+  )
+
   // Add this function to reset the game state completely
   const resetGameState = () => {
     // Clear all game-related storage
@@ -343,93 +392,19 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     })
   }
 
-  // Simulate agent voting based on their preferences and budget constraints
-  const agentVotes = (policyId: number) => {
+  // Simulate agent voting based on their preferences
+  const agentVotes = async (policyId: number) => {
+    // Get preferred options for this policy if not already available
+    const preferredOptions = await getAgentPreferredOptions(policyId)
+
     setDiscussionState((prev) => {
       const currentVotes = prev.votes[policyId] || []
       const filteredVotes = currentVotes.filter((vote) => vote.agentId === "user") // Keep user votes
 
-      // Get all existing votes for each agent to track budget
-      const existingVotes: Record<string, Record<number, number>> = {}
-
-      // Initialize with empty records for each agent
-      agents.forEach((agent) => {
-        existingVotes[agent.id] = {}
-      })
-
-      // Fill in existing votes from previous policies
-      Object.entries(prev.votes).forEach(([pid, votes]) => {
-        const pId = Number(pid)
-        if (pId !== policyId) {
-          // Skip current policy
-          votes.forEach((vote) => {
-            if (vote.agentId !== "user" && agents.some((a) => a.id === vote.agentId)) {
-              existingVotes[vote.agentId][pId] = vote.optionId
-            }
-          })
-        }
-      })
-
-      // Get budget usage from localStorage
-      let budgetUsage: Record<string, number> = {}
-      try {
-        const savedBudgetUsage = localStorage.getItem("beanBudgetUsage")
-        if (savedBudgetUsage) {
-          budgetUsage = JSON.parse(savedBudgetUsage)
-        }
-      } catch (error) {
-        console.error("Error parsing budget usage:", error)
-      }
-
-      // Generate votes for each agent based on their preferences and budget constraints
+      // Generate votes for each agent based on their preferred options
       const agentVotesList = agents.map((agent) => {
-        // Get remaining budget for this agent
-        const usedBudget = budgetUsage[agent.id] || 0
-        const remainingBudget = 14 - usedBudget
-
-        // Count how many policies are left to vote on (including current one)
-        const totalPolicies = 7
-        const votedPolicies = Object.keys(existingVotes[agent.id]).length
-        const remainingPolicies = totalPolicies - votedPolicies
-
-        // Calculate minimum budget needed for remaining policies (1 unit per policy)
-        const minimumBudgetNeeded = remainingPolicies
-
-        // Check if we need to be conservative with remaining budget
-        const mustBeConservative = remainingBudget <= minimumBudgetNeeded
-
-        // Get the current policy
-        const policy = policyQuestions.find((p) => p.id === policyId)
-        if (!policy) {
-          return {
-            agentId: agent.id,
-            policyId,
-            optionId: 1, // Default to cheapest option if policy not found
-          }
-        }
-
-        // Check if this agent has an initial vote for this policy
-        let preferredOption = initialAgentVotes[agent.id]?.[policyId] || 1
-
-        // Budget constraints check
-        const option3Weight = policy.options.find((o) => o.id === 3)?.weight || 0
-        const option2Weight = policy.options.find((o) => o.id === 2)?.weight || 0
-
-        // Adjust based on budget constraints
-        if (preferredOption === 3 && (remainingBudget < option3Weight || mustBeConservative)) {
-          preferredOption = 2 // Downgrade to option 2 if can't afford option 3
-        }
-
-        if (preferredOption === 2 && (remainingBudget < option2Weight || mustBeConservative)) {
-          preferredOption = 1 // Downgrade to option 1 if can't afford option 2
-        }
-
-        // Final check to ensure the selected option doesn't exceed budget
-        const selectedOptionWeight = policy.options.find((o) => o.id === preferredOption)?.weight || 0
-        if (selectedOptionWeight > remainingBudget) {
-          // If the preferred option would exceed budget, choose the cheapest option
-          preferredOption = 1
-        }
+        // Get the preferred option for this agent
+        const preferredOption = agentPreferredOptions[agent.id]?.[policyId] || preferredOptions?.[agent.id] || 2 // Default to middle option if not found
 
         return {
           agentId: agent.id,
@@ -513,25 +488,39 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     return discussionState.finalSelections[policyId] || null
   }
 
-  return (
-    <AgentContext.Provider
-      value={{
-        agents,
-        selectedAgent,
-        discussionState,
-        initialAgentVotes,
-        setSelectedAgent,
-        userVote,
-        agentVotes,
-        getFinalSelection,
-        generateInitialAgentVotes,
-        hasInitialVotes,
-        resetGameState,
-      }}
-    >
-      {children}
-    </AgentContext.Provider>
+  const contextValue = React.useMemo<AgentContextType>(
+    () => ({
+      agents,
+      selectedAgent,
+      discussionState,
+      initialAgentVotes,
+      agentPreferredOptions,
+      setSelectedAgent,
+      agentVotes,
+      getFinalSelection,
+      generateInitialAgentVotes,
+      getAgentPreferredOptions,
+      hasInitialVotes,
+      resetGameState,
+    }),
+    [
+      agents,
+      selectedAgent,
+      discussionState,
+      initialAgentVotes,
+      agentPreferredOptions,
+      setSelectedAgent,
+      userVote,
+      agentVotes,
+      getFinalSelection,
+      generateInitialAgentVotes,
+      getAgentPreferredOptions,
+      hasInitialVotes,
+      resetGameState,
+    ],
   )
+
+  return <AgentContext.Provider value={contextValue}>{children}</AgentContext.Provider>
 }
 
 export const useAgentContext = () => useContext(AgentContext)

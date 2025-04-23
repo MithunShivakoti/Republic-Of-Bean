@@ -10,8 +10,36 @@ import { useAgentContext } from "@/providers/agent-provider"
 import { Check, Loader2, AlertCircle, ArrowRight, Lock } from "lucide-react"
 import { policyQuestions } from "@/data/policy-questions"
 import type { AgentProfile, PolicyOption } from "@/types"
+import { getAgentPreferredOption } from "@/lib/openai-service"
 
 export default function VotingPage() {
+  // Add this function at the beginning of the component, before any other logic
+  const resetBudgetIfFirstPolicy = () => {
+    // Only reset if this is policy 1 (first question)
+    if (policyId === 1) {
+      console.log("First policy detected - resetting all budgets to 0")
+
+      // Reset policy budget
+      const resetBudget = {
+        user: 0,
+        agent1: 0,
+        agent2: 0,
+        agent3: 0,
+        agent4: 0,
+      }
+
+      // Reset all budget-related storage
+      localStorage.setItem("beanBudgetUsage", JSON.stringify(resetBudget))
+      localStorage.setItem("beanPolicyBudgetUsage", JSON.stringify(resetBudget))
+      localStorage.setItem("beanDiscussionBudgetUsage", JSON.stringify(resetBudget))
+      localStorage.setItem("beanDiscussionUnits", JSON.stringify(resetBudget))
+
+      // Update state
+      setBudgetUsage(resetBudget)
+      setDiscussionBudgetUsage(resetBudget)
+    }
+  }
+
   const router = useRouter()
   const { id } = useParams()
   const policyId = Number.parseInt(Array.isArray(id) ? id[0] : id)
@@ -20,13 +48,14 @@ export default function VotingPage() {
   const [selectedVote, setSelectedVote] = useState<number | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [agentVotes, setAgentVotes] = useState<Record<string, number>>({})
+  // Fix: Initialize showResults with false instead of referencing itself
   const [showResults, setShowResults] = useState(false)
   const [finalOption, setFinalOption] = useState<number | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(true)
   const [budgetUpdated, setBudgetUpdated] = useState(false) // Track if budget has been updated
   const [userVote, setUserVote] = useState<any>(null)
   const [showSuccess, setShowSuccess] = useState(false)
-  const [autoRedirect, setAutoRedirect] = useState(true) // New state to control auto-redirect
+  const [autoRedirect, setAutoRedirect] = useState(false) // Disabled by default - only redirect when user clicks next
   const [budgetInitialized, setBudgetInitialized] = useState(false) // Track if budget has been initialized
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [tiebreakInfo, setTiebreakInfo] = useState<{
@@ -38,6 +67,24 @@ export default function VotingPage() {
     options: [],
     winner: null,
   })
+  const [maxVotes, setMaxVotes] = useState<number>(0)
+  const [totalVotes, setTotalVotes] = useState<number>(0)
+  // Add a new state variable to track if votes have been finalized
+  const [votesFinalized, setVotesFinalized] = useState(false)
+  // Add a new state variable to track majority options across all policies
+  const [majorityOptions, setMajorityOptions] = useState<
+    Record<
+      number,
+      {
+        optionId: number
+        votes: number
+        totalVotes: number
+        policyTitle: string
+        optionText: string
+        weight: number
+      }
+    >
+  >({})
 
   // Initialize discussionState from context or create a default empty state
   const [discussionState, setDiscussionState] = useState({
@@ -61,6 +108,18 @@ export default function VotingPage() {
       }
     }
   }, [contextDiscussionState])
+
+  // Load majority options from localStorage on component mount
+  useEffect(() => {
+    try {
+      const savedMajorityOptions = localStorage.getItem("beanMajorityOptions")
+      if (savedMajorityOptions) {
+        setMajorityOptions(JSON.parse(savedMajorityOptions))
+      }
+    } catch (error) {
+      console.error("Error loading majority options:", error)
+    }
+  }, [])
 
   // Get the current policy from policyQuestions
   const currentPolicy = policyQuestions.find((p) => p.id === policyId)
@@ -108,348 +167,91 @@ export default function VotingPage() {
   }
 
   // Add this function near the other utility functions (if it doesn't exist already)
+  // Use the agent's actual preferred option without budget constraints
   function getAgentVote(agent: AgentProfile, options: PolicyOption[], policyId: number): number {
-    // Get current budget usage for both policy and discussion units
-    let policyBudgetUsage = { user: 0, agent1: 0, agent2: 0, agent3: 0, agent4: 0 }
-    let discussionBudgetUsage = { user: 0, agent1: 0, agent2: 0, agent3: 0, agent4: 0 }
-
+    // Try to get the agent's preferred option from localStorage
     try {
-      const savedPolicyBudget = localStorage.getItem("beanBudgetUsage")
-      const savedDiscussionBudget = localStorage.getItem("beanDiscussionBudgetUsage")
-
-      if (savedPolicyBudget) {
-        policyBudgetUsage = JSON.parse(savedPolicyBudget)
-      }
-
-      if (savedDiscussionBudget) {
-        discussionBudgetUsage = JSON.parse(savedDiscussionBudget)
+      const savedPreferredOptions = localStorage.getItem("beanAgentPreferredOptions")
+      if (savedPreferredOptions) {
+        const preferredOptions = JSON.parse(savedPreferredOptions)
+        if (preferredOptions[agent.id]?.[policyId]) {
+          // Convert from option ID (1-3) to array index (0-2)
+          const optionId = preferredOptions[agent.id][policyId]
+          const optionIndex = options.findIndex((opt) => opt.id === optionId)
+          return optionIndex >= 0 ? optionIndex : 1 // Default to option 2 (index 1) if not found
+        }
       }
     } catch (error) {
-      console.error("Error loading budget data:", error)
+      console.error("Error getting agent preferred option:", error)
     }
 
-    // Calculate remaining budget for this agent (use the more restrictive of the two)
-    const policyBudgetUsed = policyBudgetUsage[agent.id] || 0
-    const discussionBudgetUsed = discussionBudgetUsage[agent.id] || 0
-    const totalBudgetUsed = Math.max(policyBudgetUsed, discussionBudgetUsed)
-    const remainingBudget = 14 - totalBudgetUsed
-
-    // Calculate remaining questions (including current one)
-    const totalQuestions = 7
-    const remainingQuestions = totalQuestions - policyId + 1
-
-    // Calculate minimum budget needed for remaining questions (1 unit per question)
-    const minimumBudgetNeeded = remainingQuestions
-
-    console.log(`Agent ${agent.id} has ${remainingBudget} budget left for ${remainingQuestions} questions`)
-
-    // LESS STRICT BUDGET ENFORCEMENT - Allow more variety in choices
-    // If we only have exactly enough for 1 unit per remaining question, force option 1
-    if (remainingBudget <= minimumBudgetNeeded - 1) {
-      // Changed from <= minimumBudgetNeeded to <= minimumBudgetNeeded - 1
-      console.log(`Agent ${agent.id} forced to choose option 1 due to budget constraints`)
-      return 0 // Index 0 is option 1
-    }
-
-    // If we have some extra budget but not enough for option 3 on all remaining questions
-    // Be more generous with choices to ensure variety
-    if (remainingBudget < remainingQuestions * 2) {
-      // We need to be careful - but allow more option 2 choices
-      const canAffordOption2 = remainingBudget > minimumBudgetNeeded - 1 // Changed from > minimumBudgetNeeded
-
-      if (canAffordOption2 && Math.random() < 0.6) {
-        // Increased from 0.3 to 0.6
-        // 60% chance to choose option 2 if we can afford it
-        return 1 // Index 1 is option 2
-      } else {
-        return 0 // Otherwise choose option 1
-      }
-    }
-
-    // If we have a comfortable amount of budget, use the agent's preferences
-    // Give each agent a chance to pick option 3 if it exists
-    if (options.length >= 3) {
-      // Agents with "radical" or "revolutionary" or "experimental" in their perspective or values
-      // have a higher chance of picking option 3
-      const isRadical =
-        agent.perspective.toLowerCase().includes("radical") ||
-        agent.perspective.toLowerCase().includes("revolution") ||
-        agent.perspective.toLowerCase().includes("experiment")
-
-      // Increased chances for option 3
-      const option3Chance = isRadical ? 0.6 : 0.4 // Increased from 0.4/0.2 to 0.6/0.4
-
-      // Check if we can afford option 3
-      const option3Weight = options[2].weight || 3
-      const canAffordOption3 = remainingBudget >= option3Weight + (remainingQuestions - 1) - 1 // Added -1 to be more lenient
-
-      if (canAffordOption3 && Math.random() < option3Chance) {
-        return 2 // Index 2 is option 3
-      }
-    }
-
-    // Otherwise use weighted random selection with budget constraints
-    // Option 1: 30% chance, Option 2: 40% chance, Option 3: 30% chance (if not already selected above)
-    // Changed from 50/30/20 to 30/40/30 for more variety
-    const option2Weight = options[1].weight || 2
-    const canAffordOption2 = remainingBudget >= option2Weight + (remainingQuestions - 1) - 1 // Added -1 to be more lenient
-
+    // If no preferred option is found, use a default distribution
+    // This ensures equal probability for all options
     const rand = Math.random()
-    if (rand < 0.3 || !canAffordOption2) {
-      // Changed from 0.5 to 0.3
-      return 0 // Option 1
-    }
-    if (rand < 0.7) {
-      // Changed from 0.8 to 0.7
-      return 1 // Option 2
-    }
-
-    // For option 3, do one final budget check
-    const option3Weight = options.length >= 3 ? options[2].weight || 3 : 3
-    const canAffordOption3 = remainingBudget >= option3Weight + (remainingQuestions - 1) - 1 // Added -1 to be more lenient
-
-    if (canAffordOption3) {
-      return Math.min(2, options.length - 1) // Option 3 or the last available option
+    if (rand < 0.33) {
+      return 2 // Option 3 (33% chance)
+    } else if (rand < 0.66) {
+      return 1 // Option 2 (33% chance)
     } else {
-      return 1 // Fall back to option 2 if we can't afford option 3
+      return 0 // Option 1 (33% chance)
     }
   }
 
   // Get messages from session storage and analyze agent opinions
   useEffect(() => {
-    if (currentPolicy) {
+    if (currentPolicy && !votesFinalized) {
       setIsAnalyzing(true)
 
-      // Get budget usage from localStorage - ONLY LOAD, DON'T UPDATE
-      let budgetUsage: Record<string, number> = {}
-      try {
-        const savedBudgetUsage = localStorage.getItem("beanBudgetUsage")
-        if (savedBudgetUsage) {
-          budgetUsage = JSON.parse(savedBudgetUsage)
-          setBudgetInitialized(true)
+      // Function to get agent preferred options
+      const getAgentPreferredOptions = async () => {
+        const votes: Record<string, number> = {}
+
+        // Try to load preferred options from localStorage first
+        let savedPreferredOptions: Record<string, Record<number, number>> = {}
+        try {
+          const savedData = localStorage.getItem("beanAgentPreferredOptions")
+          if (savedData) {
+            savedPreferredOptions = JSON.parse(savedData)
+          }
+        } catch (error) {
+          console.error("Error loading preferred options:", error)
         }
-      } catch (error) {
-        console.error("Error parsing budget usage:", error)
-      }
 
-      // Get discussion budget usage from localStorage
-      let discussionBudgetUsage: Record<string, number> = {}
-      try {
-        const savedDiscussionBudget = localStorage.getItem("beanDiscussionBudgetUsage")
-        if (savedDiscussionBudget) {
-          discussionBudgetUsage = JSON.parse(savedDiscussionBudget)
-        }
-      } catch (error) {
-        console.error("Error parsing discussion budget usage:", error)
-      }
+        // For each agent, get their preferred option
+        for (const agent of agents) {
+          try {
+            // Check if we already have a preferred option for this agent and policy
+            if (savedPreferredOptions[agent.id]?.[policyId]) {
+              votes[agent.id] = savedPreferredOptions[agent.id][policyId]
+              continue
+            }
 
-      // Calculate remaining budget for each agent
-      const getRemainingBudget = (agentId: string) => {
-        return 14 - (budgetUsage[agentId] || 0)
-      }
+            // If not, get it from OpenAI
+            const preferredOption = await getAgentPreferredOption(agent.id, policyId)
+            votes[agent.id] = preferredOption
 
-      // Calculate remaining discussion budget for each agent
-      const getRemainingDiscussionBudget = (agentId: string) => {
-        return 14 - (discussionBudgetUsage[agentId] || 0)
-      }
-
-      // Set agent votes based on policy ID to ensure variety
-      const votes: Record<string, number> = {}
-
-      // Assign votes based on policy ID, agent preferences, and remaining budget
-      agents.forEach((agent) => {
-        const remainingBudget = getRemainingBudget(agent.id)
-        const remainingDiscussionBudget = getRemainingDiscussionBudget(agent.id)
-
-        // Use the more restrictive of the two budgets
-        const effectiveRemainingBudget = Math.min(remainingBudget, remainingDiscussionBudget)
-
-        // Calculate how many policies are left after this one
-        const remainingPolicies = 7 - policyId
-
-        // If we need to save budget for future policies
-        const needToSaveBudget = effectiveRemainingBudget <= remainingPolicies
-
-        // Add some randomness to agent preferences (25% chance to deviate from default preference)
-        const randomFactor = Math.random() < 0.25
-
-        let preferredOption = 1
-
-        // Agent preference logic (same as before)
-        if (agent.id === "agent1") {
-          // Dr. Selina Moreau
-          if (policyId === 1) {
-            // Language of Instruction
-            preferredOption = effectiveRemainingBudget >= 2 && !needToSaveBudget ? (randomFactor ? 3 : 2) : 1
-          } else if (policyId === 2) {
-            // Teacher Training
-            preferredOption = effectiveRemainingBudget >= 2 && !needToSaveBudget ? (randomFactor ? 1 : 2) : 1
-          } else if (policyId === 3) {
-            // Curriculum Design
-            preferredOption = effectiveRemainingBudget >= 1 && !needToSaveBudget ? (randomFactor ? 2 : 1) : 1
-          } else if (policyId === 4) {
-            // School Integration
-            preferredOption = effectiveRemainingBudget >= 2 && !needToSaveBudget ? (randomFactor ? 3 : 2) : 1
-          } else if (policyId === 5) {
-            // Psychological Support
-            preferredOption = effectiveRemainingBudget >= 2 && !needToSaveBudget ? (randomFactor ? 1 : 2) : 1
-          } else if (policyId === 6) {
-            // Family Engagement
-            preferredOption = effectiveRemainingBudget >= 1 && !needToSaveBudget ? (randomFactor ? 2 : 1) : 1
-          } else {
-            // Resource Allocation
-            preferredOption = effectiveRemainingBudget >= 2 && !needToSaveBudget ? (randomFactor ? 1 : 2) : 1
-          }
-        } else if (agent.id === "agent2") {
-          // Aisha Tarek
-          if (policyId === 1) {
-            // Language of Instruction
-            preferredOption =
-              effectiveRemainingBudget >= 3 && !needToSaveBudget
-                ? 3
-                : effectiveRemainingBudget >= 2 && !needToSaveBudget
-                  ? 2
-                  : 1
-            // Add randomness
-            if (randomFactor && effectiveRemainingBudget >= 2) preferredOption = preferredOption === 3 ? 2 : 3
-          } else if (policyId === 2) {
-            // Teacher Training
-            preferredOption =
-              effectiveRemainingBudget >= 3 && !needToSaveBudget
-                ? 3
-                : effectiveRemainingBudget >= 2 && !needToSaveBudget
-                  ? 2
-                  : 1
-            // Add randomness
-            if (randomFactor && effectiveRemainingBudget >= 2) preferredOption = preferredOption === 3 ? 2 : 3
-          } else if (policyId === 3) {
-            // Curriculum Design
-            preferredOption =
-              effectiveRemainingBudget >= 3 && !needToSaveBudget
-                ? 3
-                : effectiveRemainingBudget >= 2 && !needToSaveBudget
-                  ? 2
-                  : 1
-            // Add randomness
-            if (randomFactor && effectiveRemainingBudget >= 2) preferredOption = preferredOption === 3 ? 2 : 3
-          } else if (policyId === 4) {
-            // School Integration
-            preferredOption =
-              effectiveRemainingBudget >= 3 && !needToSaveBudget
-                ? 3
-                : effectiveRemainingBudget >= 2 && !needToSaveBudget
-                  ? 2
-                  : 1
-            // Add randomness
-            if (randomFactor && effectiveRemainingBudget >= 2) preferredOption = preferredOption === 3 ? 2 : 3
-          } else if (policyId === 5) {
-            // Psychological Support
-            preferredOption =
-              effectiveRemainingBudget >= 3 && !needToSaveBudget
-                ? 3
-                : effectiveRemainingBudget >= 2 && !needToSaveBudget
-                  ? 2
-                  : 1
-            // Add randomness
-            if (randomFactor && effectiveRemainingBudget >= 2) preferredOption = preferredOption === 3 ? 2 : 3
-          } else if (policyId === 6) {
-            // Family Engagement
-            preferredOption =
-              effectiveRemainingBudget >= 3 && !needToSaveBudget
-                ? 3
-                : effectiveRemainingBudget >= 2 && !needToSaveBudget
-                  ? 2
-                  : 1
-            // Add randomness
-            if (randomFactor && effectiveRemainingBudget >= 2) preferredOption = preferredOption === 3 ? 2 : 3
-          } else {
-            // Resource Allocation
-            preferredOption =
-              effectiveRemainingBudget >= 3 && !needToSaveBudget
-                ? 3
-                : effectiveRemainingBudget >= 2 && !needToSaveBudget
-                  ? 2
-                  : 1
-            // Add randomness
-            if (randomFactor && effectiveRemainingBudget >= 2) preferredOption = preferredOption === 3 ? 2 : 3
-          }
-        } else if (agent.id === "agent3") {
-          // Luca Demir
-          if (policyId === 1) {
-            // Language of Instruction
-            preferredOption =
-              effectiveRemainingBudget >= 3 && !needToSaveBudget
-                ? randomFactor
-                  ? 2
-                  : 3
-                : effectiveRemainingBudget >= 2 && !needToSaveBudget
-                  ? 2
-                  : 1
-          } else if (policyId === 2) {
-            // Teacher Training
-            preferredOption = effectiveRemainingBudget >= 2 && !needToSaveBudget ? (randomFactor ? 3 : 2) : 1
-          } else if (policyId === 3) {
-            // Curriculum Design
-            preferredOption = effectiveRemainingBudget >= 2 && !needToSaveBudget ? (randomFactor ? 1 : 2) : 1
-          } else if (policyId === 4) {
-            // School Integration
-            preferredOption =
-              effectiveRemainingBudget >= 3 && !needToSaveBudget
-                ? randomFactor
-                  ? 2
-                  : 3
-                : effectiveRemainingBudget >= 2 && !needToSaveBudget
-                  ? 2
-                  : 1
-          } else if (policyId === 5) {
-            // Psychological Support
-            preferredOption = effectiveRemainingBudget >= 2 && !needToSaveBudget ? (randomFactor ? 3 : 2) : 1
-          } else if (policyId === 6) {
-            // Family Engagement
-            preferredOption = effectiveRemainingBudget >= 2 && !needToSaveBudget ? (randomFactor ? 1 : 2) : 1
-          } else {
-            // Resource Allocation
-            preferredOption = effectiveRemainingBudget >= 1 && !needToSaveBudget ? (randomFactor ? 2 : 1) : 1
-          }
-        } else if (agent.id === "agent4") {
-          // Omar Al-Kazemi
-          if (policyId === 1) {
-            // Language of Instruction
-            preferredOption = effectiveRemainingBudget >= 1 && !needToSaveBudget ? (randomFactor ? 2 : 1) : 1
-          } else if (policyId === 2) {
-            // Teacher Training
-            preferredOption = effectiveRemainingBudget >= 1 && !needToSaveBudget ? (randomFactor ? 2 : 1) : 1
-          } else if (policyId === 3) {
-            // Curriculum Design
-            preferredOption = effectiveRemainingBudget >= 2 && !needToSaveBudget ? (randomFactor ? 1 : 2) : 1
-          } else if (policyId === 4) {
-            // School Integration
-            preferredOption = effectiveRemainingBudget >= 1 && !needToSaveBudget ? (randomFactor ? 2 : 1) : 1
-          } else if (policyId === 5) {
-            // Psychological Support
-            preferredOption = effectiveRemainingBudget >= 1 && !needToSaveBudget ? (randomFactor ? 2 : 1) : 1
-          } else if (policyId === 6) {
-            // Family Engagement
-            preferredOption = effectiveRemainingBudget >= 2 && !needToSaveBudget ? (randomFactor ? 1 : 2) : 1
-          } else {
-            // Resource Allocation
-            preferredOption = effectiveRemainingBudget >= 2 && !needToSaveBudget ? (randomFactor ? 1 : 2) : 1
+            // Save to localStorage
+            savedPreferredOptions[agent.id] = {
+              ...(savedPreferredOptions[agent.id] || {}),
+              [policyId]: preferredOption,
+            }
+          } catch (error) {
+            console.error(`Error getting preferred option for agent ${agent.id}:`, error)
+            // Use a default option if there's an error
+            votes[agent.id] = 2 // Default to option 2
           }
         }
 
-        // Final check - ensure the option weight doesn't exceed remaining budget
-        const optionWeight = currentPolicy.options.find((o) => o.id === preferredOption)?.weight || 1
-        if (optionWeight > effectiveRemainingBudget) {
-          preferredOption = 1 // Default to cheapest option if budget is too low
-        }
+        // Save all preferred options to localStorage
+        localStorage.setItem("beanAgentPreferredOptions", JSON.stringify(savedPreferredOptions))
 
-        votes[agent.id] = preferredOption
-      })
+        setAgentVotes(votes)
+        setIsAnalyzing(false)
+      }
 
-      setAgentVotes(votes)
-      setIsAnalyzing(false)
+      getAgentPreferredOptions()
     }
-  }, [currentPolicy, policyId, agents])
+  }, [currentPolicy, policyId, agents, votesFinalized])
 
   // Function to adjust agent votes based on budget constraints
   const getAdjustedAgentVote = (
@@ -524,6 +326,8 @@ export default function VotingPage() {
   })
 
   // Handle vote submission - Update to update both policy and discussion budgets
+  // Update the handleVote function to ensure we're using the latest budget data
+  // Replace the beginning of the handleVote function with this:
   const handleVote = (optionId: number) => {
     if (!currentPolicy) return
 
@@ -540,26 +344,35 @@ export default function VotingPage() {
       optionId: selectedOption.id,
     })
 
-    // Load current policy budget usage
+    // Initialize fresh budget objects for this vote
     let currentPolicyBudget = { user: 0, agent1: 0, agent2: 0, agent3: 0, agent4: 0 }
-    try {
-      const savedBudgetUsage = localStorage.getItem("beanBudgetUsage")
-      if (savedBudgetUsage) {
-        currentPolicyBudget = JSON.parse(savedBudgetUsage)
-      }
-    } catch (error) {
-      console.error("Error parsing budget usage:", error)
-    }
-
-    // Load current discussion budget usage
     let currentDiscussionBudget = { user: 0, agent1: 0, agent2: 0, agent3: 0, agent4: 0 }
-    try {
-      const savedDiscussionBudget = localStorage.getItem("beanDiscussionBudgetUsage")
-      if (savedDiscussionBudget) {
-        currentDiscussionBudget = JSON.parse(savedDiscussionBudget)
+
+    // For policy 1, ensure we start with zero budgets
+    if (policyId === 1) {
+      console.log("First policy - using fresh budget")
+    } else {
+      // For other policies, try to load current budget usage
+      try {
+        const savedBudgetUsage = localStorage.getItem("beanBudgetUsage")
+        if (savedBudgetUsage) {
+          currentPolicyBudget = JSON.parse(savedBudgetUsage)
+          console.log("Loaded existing policy budget:", currentPolicyBudget)
+        }
+      } catch (error) {
+        console.error("Error parsing budget usage:", error)
       }
-    } catch (error) {
-      console.error("Error parsing discussion budget usage:", error)
+
+      // Load current discussion budget usage
+      try {
+        const savedDiscussionBudget = localStorage.getItem("beanDiscussionBudgetUsage")
+        if (savedDiscussionBudget) {
+          currentDiscussionBudget = JSON.parse(savedDiscussionBudget)
+          console.log("Loaded existing discussion budget:", currentDiscussionBudget)
+        }
+      } catch (error) {
+        console.error("Error parsing discussion budget usage:", error)
+      }
     }
 
     // Update user policy budget
@@ -583,18 +396,50 @@ export default function VotingPage() {
       // Get the options for the current policy
       const options = currentPolicy.options
 
-      // Get the agent's vote using the new function with policy ID
+      // Get the agent's vote using the function with policy ID
       const optionIndex = getAgentVote(agent, options, currentPolicy.id)
-      const adjustedOption = options[optionIndex].id
+      let adjustedOption = options[optionIndex].id
 
-      // Get the weight of the adjusted option
+      // Get the weight of the selected option
       const optionWeight = currentPolicy.options.find((o) => o.id === adjustedOption)?.weight || 0
 
+      // Calculate current agent budget usage
+      const currentAgentBudget = currentPolicyBudget[agent.id] || 0
+
+      // Calculate TOTAL budget (14) minus USED budget
+      const remainingBudget = 14 - currentAgentBudget
+
+      // Calculate remaining questions AFTER this one (not including current)
+      const remainingQuestionsAfterThis = 7 - policyId
+
+      // Calculate how much budget would be left after this vote
+      const budgetAfterVote = remainingBudget - optionWeight
+
+      // Debug logging
+      console.log(`Agent ${agent.id} for policy ${policyId}:`)
+      console.log(`- Total budget: 14`)
+      console.log(`- Used budget: ${currentAgentBudget}`)
+      console.log(`- Remaining budget: ${remainingBudget}`)
+      console.log(`- Option weight: ${optionWeight}`)
+      console.log(`- Budget after vote: ${budgetAfterVote}`)
+      console.log(`- Remaining questions: ${remainingQuestionsAfterThis}`)
+
+      // Only override if the agent wouldn't have enough budget for remaining questions
+      if (budgetAfterVote < remainingQuestionsAfterThis) {
+        console.log(`- Budget constraint triggered: Overriding option ${adjustedOption} with option 1`)
+        adjustedOption = 1 // Override with cheapest option
+      } else {
+        console.log(`- Using agent's preferred option: ${adjustedOption}`)
+      }
+
+      // Get the weight of the final adjusted option
+      const finalOptionWeight = currentPolicy.options.find((o) => o.id === adjustedOption)?.weight || 0
+
       // Update agent policy budget
-      currentPolicyBudget[agent.id] = (currentPolicyBudget[agent.id] || 0) + optionWeight
+      currentPolicyBudget[agent.id] = (currentPolicyBudget[agent.id] || 0) + finalOptionWeight
 
       // Update agent discussion budget
-      currentDiscussionBudget[agent.id] = (currentDiscussionBudget[agent.id] || 0) + optionWeight
+      currentDiscussionBudget[agent.id] = (currentDiscussionBudget[agent.id] || 0) + finalOptionWeight
 
       return {
         agentId: agent.id,
@@ -632,27 +477,43 @@ export default function VotingPage() {
       ...agentVotesList,
     ]
 
+    // Count votes properly
     allVotes.forEach((vote) => {
-      optionCounts[vote.optionId as keyof typeof optionCounts]++
+      if (vote.optionId >= 1 && vote.optionId <= 3) {
+        optionCounts[vote.optionId as keyof typeof optionCounts]++
+      }
     })
+
+    // Log vote counts for debugging
+    console.log("Vote counts:", optionCounts)
 
     // Find option with most votes
     let winningOption = 1
-    let maxVotes = 0
+    let highestVoteCount = 0
     let tieExists = false
     let tieOptions: number[] = []
 
     Object.entries(optionCounts).forEach(([option, count]) => {
-      if (count > maxVotes) {
-        maxVotes = count
+      if (count > highestVoteCount) {
+        highestVoteCount = count
         winningOption = Number(option)
         tieExists = false
         tieOptions = [Number(option)]
-      } else if (count === maxVotes && count > 0) {
+      } else if (count === highestVoteCount && count > 0) {
         tieExists = true
         tieOptions.push(Number(option))
       }
     })
+
+    // Set state variables for use in the JSX
+    setMaxVotes(highestVoteCount)
+    setTotalVotes(allVotes.length)
+
+    // Log the winning option for debugging
+    console.log("Winning option:", winningOption, "with", highestVoteCount, "votes")
+    if (tieExists) {
+      console.log("Tie detected between options:", tieOptions)
+    }
 
     // If there's a tie, randomly select one of the tied options
     if (tieExists) {
@@ -707,9 +568,37 @@ export default function VotingPage() {
       console.error("Error saving discussion state:", error)
     }
 
+    // NEW CODE: Store the majority option for this policy
+    if (currentPolicy) {
+      // Get the selected option details
+      const selectedOptionDetails = currentPolicy.options.find((opt) => opt.id === winningOption)
+
+      // Update the majority options state
+      setMajorityOptions((prev) => {
+        const updatedOptions = {
+          ...prev,
+          [currentPolicy.id]: {
+            optionId: winningOption,
+            votes: highestVoteCount,
+            totalVotes: allVotes.length,
+            policyTitle: currentPolicy.title,
+            optionText: selectedOptionDetails?.text || "",
+            weight: selectedOptionDetails?.weight || 0,
+          },
+        }
+
+        // Save to localStorage
+        localStorage.setItem("beanMajorityOptions", JSON.stringify(updatedOptions))
+
+        return updatedOptions
+      })
+    }
+
     // Show results and success message
     setShowResults(true)
     setShowSuccess(true)
+    // Add this line to mark votes as finalized
+    setVotesFinalized(true)
 
     // Only set up auto-redirect if enabled
     if (autoRedirect) {
@@ -724,6 +613,15 @@ export default function VotingPage() {
         }
       }, 5000) // 5 second delay
     }
+
+    // Save agent policy budgets to localStorage
+    // Object.keys(newAgentBudgets).forEach(agentId => {
+    //   localStorage.setItem(`agent-${agentId}-policy-budget`, JSON.stringify(newAgentBudgets[agentId]));
+    // });
+
+    // Save user policy selection and budget
+    // localStorage.setItem(`user-policy-${policyId}`, selectedOption.label);
+    // localStorage.setItem(`user-policy-${policyId}-budget`, JSON.stringify(optionCost));
   }
 
   const handleContinue = () => {
@@ -961,6 +859,11 @@ export default function VotingPage() {
     }
   }, [])
 
+  // Add this useEffect to call the reset function when the component mounts
+  useEffect(() => {
+    resetBudgetIfFirstPolicy()
+  }, [policyId])
+
   if (!currentPolicy) {
     return (
       <div className="min-h-screen bright-background py-8 px-4 flex items-center justify-center">
@@ -1100,16 +1003,22 @@ export default function VotingPage() {
               </CardHeader>
               <CardContent className="p-6">
                 <div className="space-y-4">
-                  {agents.map((agent) => (
-                    <div key={agent.id} className="flex items-center justify-between">
-                      <div className="font-medium text-gray-100">{agent.name}</div>
-                      <div className="flex items-center">
-                        <span className={getOptionColorClass(agentVotes[agent.id])}>
-                          Option {agentVotes[agent.id] || "N/A"}
-                        </span>
+                  {agents.map((agent) => {
+                    // Once votes are finalized, we use a stable reference to the votes
+                    const voteToDisplay = votesFinalized
+                      ? discussionState.votes[currentPolicy?.id]?.find((v) => v.agentId === agent.id)?.optionId ||
+                        agentVotes[agent.id]
+                      : agentVotes[agent.id]
+
+                    return (
+                      <div key={agent.id} className="flex items-center justify-between">
+                        <div className="font-medium text-gray-100">{agent.name}</div>
+                        <div className="flex items-center">
+                          <span className={getOptionColorClass(voteToDisplay)}>Option {voteToDisplay || "N/A"}</span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
 
                   <div className="flex items-center justify-between border-t border-primary/20 pt-4 mt-4">
                     <div className="font-medium text-gray-100">Your Vote</div>
@@ -1169,8 +1078,18 @@ export default function VotingPage() {
                       </span>{" "}
                       has been selected for implementation.
                     </p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      This decision was made with {maxVotes} out of {totalVotes} votes.
+                    </p>
                   </div>
                 </div>
+                {showResults && (
+                  <div className="mt-4 pt-4 border-t border-primary/20">
+                    <p className="text-xs text-gray-400">
+                      Votes have been {votesFinalized ? "finalized" : "calculated"} and will not change.
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ) : (
